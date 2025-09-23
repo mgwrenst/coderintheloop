@@ -18,3 +18,13 @@ cur.execute("""INSERT INTO person (id, name, age, gender) VALUES
 (3, 'Charlie', 35, 'M');
 """)
 
+cur.execute("""SELECT * FROM person WHERE name ='Alice';""")
+
+for row in cur.fethcall():
+    print(row)
+
+conn.commit()
+
+cur.close()
+conn.close()
+

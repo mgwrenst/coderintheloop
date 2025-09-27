@@ -1,7 +1,7 @@
 import pymongo
 from pymongo import MongoClient
 
-cluster = MongoClient("mongodb+srv://mongo:mongoDB@cluster0.3n9zbj6.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0")
+cluster = MongoClient()
 
 db = cluster["test"]
 collection = db["test"]

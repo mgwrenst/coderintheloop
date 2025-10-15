@@ -1,2 +1,4 @@
 psycopg[binary]
 python-dotenv
+tabulate
+pymongo

@@ -1,4 +1,11 @@
 {
+  "bankrupt_companies": {
+    "description": "Finn navn og organisasjonnummer på selskaper som har gått konkurs, samt dato for oppløsningen",
+    "collection": "konkurs",
+    "filter": {},
+    "projection": {"_id": 0, "navn": 1, "orgnr": 1, "oppløstdato": 1},
+    "queryString": "db.konkurs.find({}, { _id: 0, navn: 1, orgnr: 1, oppløstdato: 1 })"
+  },
   "equnior_shareholders": {
     "description": "Finn navn på selskaper og deres aksjonærer, der aksjonærens navn inneholder 'EQUINOR'",
     "collection": "aksjeeiebok",
@@ -6,18 +13,107 @@
     "projection": {"_id": 0, "selskap": 1, "aksjonærnavn": 1},
     "queryString": "db.aksjeeiebok.find({ aksjonærnavn: { $regex: 'EQUINOR', $options: 'i' } }, { _id: 0, selskap: 1, aksjonærnavn: 1 })"
   },
-  "large_companies": {
-    "description": "Finn selskaper med mer enn 1000 ansatte",
-    "collection": "selskap",
-    "filter": {"antallansatte": {"$gt": 1000}},
-    "projection": {"_id": 0, "navn": 1, "antallansatte": 1},
-    "queryString": "db.selskaper.find({ antallansatte: { $gt: 1000 } }, { _id: 0, navn: 1, antallansatte: 1 })"
-  },
-  "recent_bankruptcies": {
-    "description": "Finn selskaper som har gått konkurs etter 1. januar 2024",
+  "bankrupt_duration": {
+    "description": "Finn navn på konkursselskaper og hvor lenge det eksisterte før oppløsning",
     "collection": "konkurs",
-    "filter": {"oppløstdato": {"$gte": "2024-01-01"}},
-    "projection": {"_id": 0, "navn": 1, "orgnr": 1, "oppløstdato": 1},
-    "queryString": "db.konkurs.find({ oppløstdato: { $gte: '2024-01-01' } }, { _id: 0, navn: 1, orgnr: 1, oppløstdato: 1 })"
+    "filter": {},
+    "projection": {
+      "_id": 0,
+      "navn": 1,
+      "dager": {"$subtract": ["$oppløstdato", "$etablertdato"]},
+      "år": {"$round": [{"$divide": [{"$subtract": ["$oppløstdato", "$etablertdato"]}, 365]}, 2]}
+    },
+    "queryString": "db.konkurs.aggregate([{ $project: { _id: 0, navn: 1, dager: { $subtract: ['$oppløstdato', '$etablertdato'] }, år: { $round: [{ $divide: [{ $subtract: ['$oppløstdato', '$etablertdato'] }, 365] }, 2] } } }])"
+  },
+  "shortest_lived_companies": {
+    "description": "Finn navn og organisasjonstype for selskap(ene) med kortest levetid",
+    "collection": "konkurs",
+    "filter": {},
+    "projection": {"_id": 0, "navn": 1, "organisasjonstype": 1, "dager": {"$subtract": ["$oppløstdato", "$etablertdato"]}},
+    "queryString": "db.konkurs.aggregate([{ $project: { _id: 0, navn: 1, organisasjonstype: 1, dager: { $subtract: ['$oppløstdato', '$etablertdato'] } } }, { $sort: { dager: 1 } }, { $limit: 1 }])"
+  },
+  "shared_politician_names": {
+    "description": "Finn navn som deles av minst 4 politikere samt deres respektive partier og hjemkommuner",
+    "collection": "politikere",
+    "filter": {},
+    "projection": {"_id": 0, "navn": 1, "fødselsdato": 1, "parti": 1, "kommune": 1},
+    "queryString": "db.politikere.aggregate([{ $group: { _id: '$navn', count: { $sum: 1 } } }, { $match: { count: { $gt: 3 } } }, { $lookup: { from: 'politikere', localField: '_id', foreignField: 'navn', as: 'data' } }, { $unwind: '$data' }, { $project: { _id: 0, navn: '$data.navn', fødselsdato: '$data.fødselsdato', parti: '$data.parti', kommune: '$data.kommune' } }, { $sort: { navn: 1 } }])"
+  },
+  "all_people_upper": {
+    "description": "Navn, fødselsdato og kommune for alle personer (store bokstaver) samt navnet på tabellen de finnes i",
+    "collection": "union_of_persons",
+    "filter": {},
+    "projection": {"_id": 0, "navn": 1, "fødselsdato": 1, "kommune": 1, "tabell": 1},
+    "queryString": "// This would require combining 'politikere', 'person' and 'eierskap' collections in an aggregation with $unionWith and $project to uppercase names and kommunenavn"
+  },
+  "resurrected_bankrupt_companies": {
+    "description": "Finn konkurs-selskaper som har gjenoppstått under et nytt organisasjonsnummer",
+    "collection": "selskap",
+    "filter": {},
+    "projection": {"_id": 0, "navn": 1, "aktiv": "$orgnr", "konkurs": "$konkursOrgNr", "etablertDato": 1},
+    "queryString": "db.selskap.aggregate([{ $lookup: { from: 'konkurs', localField: 'navn', foreignField: 'navn', as: 'k' } }, { $unwind: '$k' }, { $project: { _id: 0, navn: 1, aktiv: '$orgnr', konkurs: '$k.orgnr', etablertDato: 1 } }])"
+  },
+  "politician_ownership_bankrupt": {
+    "description": "Politikeres eierskap i konkursbedrifter",
+    "collection": "eierskap",
+    "filter": {"eierPersonNavn": {"$ne": null}},
+    "projection": {"_id": 0, "eierPersonNavn": 1, "parti": 1, "konkursNavn": 1},
+    "queryString": "db.eierskap.aggregate([{ $match: { eierPersonNavn: { $ne: null } } }, { $lookup: { from: 'konkurs', localField: 'utstederUUID', foreignField: 'UUID', as: 'k' } }, { $unwind: '$k' }, { $lookup: { from: 'politikere', localField: 'eierPersonNavn', foreignField: 'navn', as: 'p' } }, { $unwind: '$p' }, { $project: { _id: 0, eierPersonNavn: 1, parti: '$p.parti', konkursNavn: '$k.navn' } }])"
+  },
+  "politician_roles_in_bankrupt_companies": {
+    "description": "Politikeres roller i nåværende bedrifter som tidligere har gått konkurs",
+    "collection": "person",
+    "filter": {},
+    "projection": {"_id": 0, "person": "$navn", "parti": 1, "selskap": "$selskapnavn", "rolle": "$selskaprolle", "registrert": {"$year": "$selskaprolleregistrerttid"}},
+    "queryString": "db.person.aggregate([{ $lookup: { from: 'politikere', localField: 'navn', foreignField: 'navn', as: 'po' } }, { $lookup: { from: 'konkurs', localField: 'selskapnavn', foreignField: 'navn', as: 'ko' } }, { $unwind: '$po' }, { $unwind: '$ko' }, { $project: { _id: 0, person: '$navn', parti: '$po.parti', selskap: '$ko.navn', rolle: '$selskaprolle', registrert: { $year: '$selskaprolleregistrerttid' } } }, { $sort: { person: 1 } }])"
+  },
+  "politician_sell_before_bankruptcy": {
+    "description": "Finn innvalgte politikere som selger seg ut samme år, eller året før, et selskap oppløses",
+    "collection": "eierskap",
+    "filter": {"eierPersonNavn": {"$ne": null}},
+    "projection": {"_id": 0, "eierPersonNavn": 1, "parti": 1, "selskap": "$konkursNavn", "eierskapÅr": 1, "oppløstdato": 1},
+    "queryString": "db.eierskap.aggregate([{ $match: { eierPersonNavn: { $ne: null } } }, { $lookup: { from: 'konkurs', localField: 'utstederUUID', foreignField: 'UUID', as: 'k' } }, { $unwind: '$k' }, { $lookup: { from: 'politikere', localField: 'eierPersonNavn', foreignField: 'navn', as: 'p' } }, { $unwind: '$p' }, { $match: { $expr: { $lte: [ { $subtract: [{ $year: '$k.oppløstdato' }, '$eierskapÅr'] }, 1 ] }, 'p.innvalgt': 'Ja' } }, { $project: { _id: 0, eierPersonNavn: 1, parti: '$p.parti', selskap: '$k.navn', eierskapÅr: 1, oppløstdato: '$k.oppløstdato' } }])"
+  },
+  "roles_in_kautokeino_venstre": {
+    "description": "Hvem har hatt roller i KAUTOKEINO VENSTRE",
+    "collection": "person",
+    "filter": {"selskapnavn": "KAUTOKEINO VENSTRE"},
+    "projection": {"_id": 0, "navn": 1, "fødselsdato": 1, "selskaprolle": 1, "start": "$personselskaprollestartdato", "slutt": "$personselskaprollesluttdato"},
+    "queryString": "db.person.find({ selskapnavn: 'KAUTOKEINO VENSTRE' }, { _id: 0, navn: 1, fødselsdato: 1, selskaprolle: 1, start: '$personselskaprollestartdato', slutt: '$personselskaprollesluttdato' }).sort({ personselskaprollestartdato: 1 })"
+  },
+  "max_roles_medicinerforeningen": {
+    "description": "Hva er det største antallet roller noen har hatt i MEDICINERFORENINGEN",
+    "collection": "person",
+    "filter": {"selskapnavn": "MEDICINERFORENINGEN"},
+    "projection": {"_id": 0, "navn": 1, "fødselsdato": 1},
+    "queryString": "db.person.aggregate([{ $match: { selskapnavn: 'MEDICINERFORENINGEN' } }, { $group: { _id: { navn: '$navn', fødselsdato: '$fødselsdato' }, count: { $sum: 1 } } }, { $sort: { count: -1 } }, { $limit: 1 }, { $project: { _id: 0, navn: '$_id.navn', fødselsdato: '$_id.fødselsdato' } }])"
+  },
+  "politician_roles_count": {
+    "description": "Hvor mange roller har hver politiker hatt",
+    "collection": "person",
+    "filter": {},
+    "projection": {"_id": 0, "navn": "$po.navn", "fødselsdato": "$po.fødselsdato", "antall": 1},
+    "queryString": "db.person.aggregate([{ $lookup: { from: 'politikere', localField: 'navn', foreignField: 'navn', as: 'po' } }, { $unwind: '$po' }, { $group: { _id: { navn: '$po.navn', fødselsdato: '$po.fødselsdato' }, antall: { $sum: 1 } } }, { $project: { _id: 0, navn: '$_id.navn', fødselsdato: '$_id.fødselsdato', antall: 1 } }])"
+  },
+  "politicians_with_roles_recent_years": {
+    "description": "Hvor mange politikere har eller har hatt rolle i næringslivet de siste årene",
+    "collection": "person",
+    "filter": {},
+    "projection": {"_id": 0, "navn": "$po.navn", "fødselsdato": "$po.fødselsdato", "antall": 1},
+    "queryString": "db.person.aggregate([{ $lookup: { from: 'politikere', localField: 'navn', foreignField: 'navn', as: 'po' } }, { $unwind: '$po' }, { $group: { _id: { navn: '$po.navn', fødselsdato: '$po.fødselsdato' }, antall: { $sum: 1 } } }, { $count: 'total_politicians' }])"
+  },
+  "politicians_roles_last_year": {
+    "description": "Hvilke politikere har hatt roller det siste året (fra dags dato)",
+    "collection": "person",
+    "filter": {},
+    "projection": {"_id": 0, "navn": "$po.navn", "fødselsdato": "$po.fødselsdato", "start": "$personselskaprollestartdato", "slutt": "$personselskaprollesluttdato"},
+    "queryString": "db.person.aggregate([{ $lookup: { from: 'politikere', localField: 'navn', foreignField: 'navn', as: 'po' } }, { $unwind: '$po' }, { $match: { $expr: { $or: [ { $lt: [ { $subtract: [new Date(), '$personselskaprollesluttdato'] }, 365*24*60*60*1000 ] }, { $lt: [ { $subtract: [new Date(), '$personselskaprollestartdato'] }, 365*24*60*60*1000 ] } ] } } }, { $project: { _id: 0, navn: '$po.navn', fødselsdato: '$po.fødselsdato', start: '$personselskaprollestartdato', slutt: '$personselskaprollesluttdato' } }])"
+  },
+  "roedt_politicians_outside_kommune": {
+    "description": "Hvor mange politikere fra partiet Rødt har hatt roller utenfor sin egen kommune",
+    "collection": "person",
+    "filter": {"parti": "Rødt"},
+    "projection": {"_id": 0, "navn": "$po.navn", "fødselsdato": "$po.fødselsdato", "antall": 1},
+    "queryString": "db.person.aggregate([{ $lookup: { from: 'politikere', localField: 'navn', foreignField: 'navn', as: 'po' } }, { $unwind: '$po' }, { $match: { $expr: { $ne: [ { $toUpper: '$po.kommune' }, { $toUpper: '$kommunenavn' } ] }, 'po.parti': 'Rødt' } }, { $group: { _id: { navn: '$po.navn', fødselsdato: '$po.fødselsdato' }, antall: { $sum: 1 } } }, { $project: { _id: 0, navn: '$_id.navn', fødselsdato: '$_id.fødselsdato', antall: 1 } }])"
   }
 }

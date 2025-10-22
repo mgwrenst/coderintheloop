@@ -59,12 +59,12 @@ def main():
 
             # List of tables to transfer: (Postgres table name, MongoDB collection name)
             tables = [
-                #("aksjeeiebok", "aksjeeiebok"),
+                ("aksjeeiebok", "aksjeeiebok"),
                 ("politikere", "politikere"),
                 ("konkurs", "konkurs"),
                 ("selskap", "selskap"),
-                #("person", "person"),
-                #("eierskap", "eierskap"),
+                ("person", "person"),
+                ("eierskap", "eierskap"),
             ]
 
             for pg_table, mongo_collection in tables:

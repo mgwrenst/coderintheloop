@@ -1,0 +1,23 @@
+{
+  "equnior_shareholders": {
+    "description": "Finn navn på selskaper og deres aksjonærer, der aksjonærens navn inneholder 'EQUINOR'",
+    "collection": "aksjeeiebok",
+    "filter": {"aksjonærnavn": {"$regex": "EQUINOR", "$options": "i"}},
+    "projection": {"_id": 0, "selskap": 1, "aksjonærnavn": 1},
+    "queryString": "db.aksjeeiebok.find({ aksjonærnavn: { $regex: 'EQUINOR', $options: 'i' } }, { _id: 0, selskap: 1, aksjonærnavn: 1 })"
+  },
+  "large_companies": {
+    "description": "Finn selskaper med mer enn 1000 ansatte",
+    "collection": "selskap",
+    "filter": {"antallansatte": {"$gt": 1000}},
+    "projection": {"_id": 0, "navn": 1, "antallansatte": 1},
+    "queryString": "db.selskaper.find({ antallansatte: { $gt: 1000 } }, { _id: 0, navn: 1, antallansatte: 1 })"
+  },
+  "recent_bankruptcies": {
+    "description": "Finn selskaper som har gått konkurs etter 1. januar 2024",
+    "collection": "konkurs",
+    "filter": {"oppløstdato": {"$gte": "2024-01-01"}},
+    "projection": {"_id": 0, "navn": 1, "orgnr": 1, "oppløstdato": 1},
+    "queryString": "db.konkurs.find({ oppløstdato: { $gte: '2024-01-01' } }, { _id: 0, navn: 1, orgnr: 1, oppløstdato: 1 })"
+  }
+}

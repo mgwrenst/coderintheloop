@@ -1,44 +1,53 @@
-from pymongo import MongoClient
 import os
 import json
+from pymongo import MongoClient
+from pprint import pprint
 
-MONGO_URI = os.environ.get("MONGO_URI", "mongodb://localhost:27017")
-DB_NAME = os.environ.get("DB_NAME", "groundtruth0")
+def main():
+    # --- MongoDB connection ---
+    MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017")
+    DB_NAME = os.getenv("DB_NAME", "groundtruthsmall")
+    client = MongoClient(MONGO_URI)
+    db = client[DB_NAME]
 
-client = MongoClient(MONGO_URI)
-db = client[DB_NAME]
+    # --- Load queries ---
+    with open("database/mongo/benchmark.json", "r", encoding="utf-8") as f:
+        queries = json.load(f)
 
+    # --- Show available queries ---
+    print("\nAvailable queries:")
+    for i, name in enumerate(queries.keys(), 1):
+        print(f"{i}. {name}")
 
-# --- load queries from JSON ---
-with open("database/mongo/benchmark.json", "r", encoding="utf-8") as f:
-    queries = json.load(f)
+    # --- Select query ---
+    choice = input("\nEnter query number or name: ").strip()
+    query_name = list(queries.keys())[int(choice) - 1] if choice.isdigit() else choice
 
-# --- choose query ---
-print("Available queries:")
-for i, name in enumerate(queries.keys(), 1):
-    print(f"{i}. {name}")
+    if query_name not in queries:
+        print(f"[ERROR] Unknown query name: {query_name}")
+        return
 
-choice = input("\nEnter query number or name: ").strip()
+    query_def = queries[query_name]
+    collection = db[query_def["collection"]]
+    filter_ = query_def.get("filter", {})
+    projection = query_def.get("projection", None)
 
-# allow both numeric or string selection
-if choice.isdigit():
-    query_name = list(queries.keys())[int(choice) - 1]
-else:
-    query_name = choice
+    print(f"\n▶ Running query '{query_name}' on collection '{query_def['collection']}'...\n")
 
-if query_name not in queries:
-    raise ValueError(f"Unknown query name: {query_name}")
+    # --- Execute query ---
+    results = collection.find(filter_, projection)
+    count = 0
+    for doc in results:
+        pprint(doc)
+        print("-" * 60)
+        count += 1
 
-query_def = queries[query_name]
+    if count == 0:
+        print("[INFO] No documents matched the query.")
+    else:
+        print(f"[DONE] Retrieved {count} documents.")
 
-print(f"\n▶ Running query: {query_name}\n")
+    client.close()
 
-# --- run query ---
-collection = db[query_def["collection"]]
-filter_ = query_def.get("filter", {})
-projection = query_def.get("projection", None)
-
-cursor = collection.find(filter_, projection)
-
-for doc in cursor:
-    print(doc)
+if __name__ == "__main__":
+    main()

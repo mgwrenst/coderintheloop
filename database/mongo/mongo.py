@@ -14,14 +14,15 @@ def main():
         mongo_db = mongo_client["groundtruthsmall"]
 
         # Clear collections before loading
-        for coll in ["selskap", "eierskap", "politikere", "aksjeeiebok"]:
+        for coll in ["selskap", "eierskap", "politikere", "aksjeeiebok", "person"]:
             mongo_db[coll].drop()
         print("Old collections cleared.")
 
         # Transfer tables 
         transfer_table(pg_conn, mongo_db, "eierskap", "eierskap")
         transfer_table(pg_conn, mongo_db, "politikere", "politikere")
-        transfer_table(pg_conn, mongo_db, "aksjeeiebok", "aksjeeiebok")
+        transfer_table(pg_conn, mongo_db, "aksjeeiebok", "aksjeeiebok"),
+        transfer_table(pg_conn, mongo_db, "person", "person")
         transfer_table(pg_conn, mongo_db, "alleselskaper", "selskap")
 
     print("Data transfer complete.")

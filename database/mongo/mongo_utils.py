@@ -41,25 +41,3 @@ def transfer_table(pg_conn, mongo_db, pg_table_name, mongo_collection_name, batc
                 total += len(docs)
 
         print(f"Done ({total} rows)")
-
-
-def transfer_union(pg_conn, mongo_db, table1, table2, mongo_collection_name, batch_size=5000):
-    collection = mongo_db[mongo_collection_name]
-    print(f"Combining {table1} + {table2} -> {mongo_collection_name}")
-
-    with pg_conn.cursor(name=f"cur_{mongo_collection_name}") as cur:
-        cur.itersize = batch_size
-        cur.execute(f"SELECT * FROM {table1} UNION ALL SELECT * FROM {table2}")
-        col_names = [desc[0] for desc in cur.description]
-        batch = []
-
-        for row in cur:
-            batch.append(dict(zip(col_names, row)))
-            if len(batch) >= batch_size:
-                collection.insert_many(batch, ordered=False)
-                batch.clear()
-
-        if batch:
-            collection.insert_many(batch, ordered=False)
-
-    print("Done.")

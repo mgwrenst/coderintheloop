@@ -1,0 +1,458 @@
+[
+  {
+    "name": "projection_politikere_basic",
+    "category": "projection",
+    "description": "Show politician name, party, and municipality.",
+    "collection": "politikere",
+    "complexity": 1,
+    "pipeline": [
+      { "$project": { "_id": 0, "navn": 1, "parti": 1, "kommune": 1 } }
+    ]
+  },
+  {
+    "name": "projection_politikere_votes",
+    "category": "projection",
+    "description": "Project politician name, party, and computed vote category.",
+    "collection": "politikere",
+    "complexity": 2,
+    "pipeline": [
+      {
+        "$project": {
+          "_id": 0,
+          "navn": 1,
+          "parti": 1,
+          "personstemmer": 1,
+          "vote_category": {
+            "$cond": [
+              { "$gt": ["$personstemmer", 1000] },
+              "high_support",
+              "low_support"
+            ]
+          }
+        }
+      }
+    ]
+  },
+  {
+    "name": "selection_ap_members",
+    "category": "selection",
+    "description": "Find all politicians from Arbeiderpartiet.",
+    "collection": "politikere",
+    "complexity": 1,
+    "pipeline": [
+      { "$match": { "parti": "Arbeiderpartiet" } }
+    ]
+  },
+  {
+    "name": "selection_high_votes",
+    "category": "selection",
+    "description": "Find politicians with more than 2000 votes and from Oslo.",
+    "collection": "politikere",
+    "complexity": 2,
+    "pipeline": [
+      { "$match": { "personstemmer": { "$gt": 2000 }, "kommune": "Oslo" } }
+    ]
+  },
+  {
+    "name": "join_politikere_eierskap",
+    "category": "join",
+    "description": "Join politicians with company ownership data.",
+    "collection": "politikere",
+    "complexity": 3,
+    "pipeline": [
+      {
+        "$lookup": {
+          "from": "eierskap",
+          "localField": "uuid",
+          "foreignField": "eier.uuid",
+          "as": "eierskap_info"
+        }
+      },
+      {
+        "$project": {
+          "_id": 0,
+          "navn": 1,
+          "parti": 1,
+          "selskap": "$eierskap_info.utsteder.navn",
+          "andel": "$eierskap_info.andel"
+        }
+      }
+    ]
+  },
+  {
+    "name": "join_politikere_relations",
+    "category": "join",
+    "description": "Join politicians with their known relations (friends/family).",
+    "collection": "politikere",
+    "complexity": 4,
+    "pipeline": [
+      {
+        "$lookup": {
+          "from": "relasjoner",
+          "localField": "uuid",
+          "foreignField": "personA_uuid",
+          "as": "relasjoner"
+        }
+      },
+      {
+        "$project": {
+          "_id": 0,
+          "navn": 1,
+          "parti": 1,
+          "relasjonstyper": "$relasjoner.type"
+        }
+      }
+    ]
+  },
+  {
+    "name": "union_politikere_companypersons",
+    "category": "union",
+    "description": "Combine politicians and company persons into one list of individuals.",
+    "collection": "politikere",
+    "complexity": 3,
+    "pipeline": [
+      {
+        "$project": { "_id": 0, "navn": 1, "type": { "$literal": "politiker" } }
+      },
+      {
+        "$unionWith": {
+          "coll": "selskap",
+          "pipeline": [
+            { "$unwind": "$personer" },
+            {
+              "$project": {
+                "_id": 0,
+                "navn": "$personer.navn",
+                "type": { "$literal": "selskapsperson" }
+              }
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "name": "union_politikere_owners",
+    "category": "union",
+    "description": "Combine politicians with company owners from eierskap.",
+    "collection": "politikere",
+    "complexity": 4,
+    "pipeline": [
+      {
+        "$project": { "_id": 0, "navn": 1, "type": { "$literal": "politiker" } }
+      },
+      {
+        "$unionWith": {
+          "coll": "eierskap",
+          "pipeline": [
+            {
+              "$project": {
+                "_id": 0,
+                "navn": "$eier.navn",
+                "type": { "$literal": "owner" }
+              }
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "name": "intersection_politikere_eiere",
+    "category": "intersection",
+    "description": "Find politicians who are also listed as company owners.",
+    "collection": "politikere",
+    "complexity": 4,
+    "pipeline": [
+      {
+        "$lookup": {
+          "from": "eierskap",
+          "pipeline": [{ "$project": { "eier_uuid": "$eier.uuid" } }],
+          "as": "eiere"
+        }
+      },
+      { "$match": { "$expr": { "$in": ["$uuid", "$eiere.eier_uuid"] } } },
+      { "$project": { "_id": 0, "navn": 1, "parti": 1 } }
+    ]
+  },
+  {
+    "name": "intersection_politikere_boardmembers",
+    "category": "intersection",
+    "description": "Find politicians who are also board members in companies.",
+    "collection": "politikere",
+    "complexity": 4,
+    "pipeline": [
+      {
+        "$lookup": {
+          "from": "selskap",
+          "pipeline": [
+            { "$unwind": "$personer" },
+            { "$project": { "person_uuid": "$personer.rolleuuid" } }
+          ],
+          "as": "selskap_personer"
+        }
+      },
+      { "$match": { "$expr": { "$in": ["$uuid", "$selskap_personer.person_uuid"] } } }
+    ]
+  },
+  {
+    "name": "difference_politikere_vs_eiere",
+    "category": "difference",
+    "description": "Find politicians who do not own shares in any company.",
+    "collection": "politikere",
+    "complexity": 3,
+    "pipeline": [
+      {
+        "$lookup": {
+          "from": "eierskap",
+          "pipeline": [{ "$project": { "eier_uuid": "$eier.uuid" } }],
+          "as": "eiere"
+        }
+      },
+      { "$match": { "$expr": { "$not": { "$in": ["$uuid", "$eiere.eier_uuid"] } } } }
+    ]
+  },
+  {
+    "name": "difference_politikere_vs_relations",
+    "category": "difference",
+    "description": "Find politicians with no known relationships (family or friends).",
+    "collection": "politikere",
+    "complexity": 3,
+    "pipeline": [
+      {
+        "$lookup": {
+          "from": "relasjoner",
+          "localField": "uuid",
+          "foreignField": "personA_uuid",
+          "as": "relasjoner"
+        }
+      },
+      { "$match": { "$expr": { "$eq": [{ "$size": "$relasjoner" }, 0] } } }
+    ]
+  },
+  {
+    "name": "alias_politikere_basic",
+    "category": "alias",
+    "description": "Rename fields for external reporting.",
+    "collection": "politikere",
+    "complexity": 1,
+    "pipeline": [
+      {
+        "$project": {
+          "_id": 0,
+          "politician_name": "$navn",
+          "political_party": "$parti",
+          "municipality": "$kommune"
+        }
+      }
+    ]
+  },
+  {
+    "name": "alias_politikere_extended",
+    "category": "alias",
+    "description": "Create a full display name combining name and party.",
+    "collection": "politikere",
+    "complexity": 2,
+    "pipeline": [
+      {
+        "$project": {
+          "_id": 0,
+          "full_display": { "$concat": ["$navn", " (", "$parti", ")"] },
+          "kommune": 1,
+          "personstemmer": 1
+        }
+      }
+    ]
+  },
+  {
+    "name": "aggregation_votes_by_party",
+    "category": "aggregation",
+    "description": "Compute average and total votes per party.",
+    "collection": "politikere",
+    "complexity": 3,
+    "pipeline": [
+      {
+        "$group": {
+          "_id": "$parti",
+          "avg_votes": { "$avg": "$personstemmer" },
+          "total_votes": { "$sum": "$personstemmer" }
+        }
+      },
+      { "$sort": { "total_votes": -1 } }
+    ]
+  },
+  {
+    "name": "aggregation_connections_by_type",
+    "category": "aggregation",
+    "description": "Count number of relationships per type across all politicians.",
+    "collection": "relasjoner",
+    "complexity": 4,
+    "pipeline": [
+      { "$group": { "_id": "$type", "antall": { "$sum": 1 } } },
+      { "$sort": { "antall": -1 } }
+    ]
+  },
+  {
+    "name": "quantifier_exists_company_owner",
+    "category": "quantifier_exists",
+    "description": "Find politicians who have at least one ownership record.",
+    "collection": "politikere",
+    "complexity": 3,
+    "pipeline": [
+      {
+        "$lookup": {
+          "from": "eierskap",
+          "localField": "uuid",
+          "foreignField": "eier.uuid",
+          "as": "ownerships"
+        }
+      },
+      { "$match": { "$expr": { "$gt": [{ "$size": "$ownerships" }, 0] } } }
+    ]
+  },
+  {
+    "name": "quantifier_exists_friend_in_company",
+    "category": "quantifier_exists",
+    "description": "Find politicians who have at least one friend working in a company.",
+    "collection": "politikere",
+    "complexity": 4,
+    "pipeline": [
+      {
+        "$lookup": {
+          "from": "relasjoner",
+          "localField": "uuid",
+          "foreignField": "personA_uuid",
+          "as": "relasjoner"
+        }
+      },
+      {
+        "$lookup": {
+          "from": "selskap",
+          "pipeline": [{ "$unwind": "$personer" }],
+          "as": "selskapspersoner"
+        }
+      },
+      {
+        "$match": {
+          "$expr": {
+            "$gt": [
+              {
+                "$size": {
+                  "$filter": {
+                    "input": "$relasjoner",
+                    "as": "r",
+                    "cond": {
+                      "$in": ["$$r.personB_uuid", "$selskapspersoner.personer.rolleuuid"]
+                    }
+                  }
+                }
+              },
+              0
+            ]
+          }
+        }
+      }
+    ]
+  },
+  {
+    "name": "quantifier_forall_family_only",
+    "category": "quantifier_forall",
+    "description": "Find politicians whose all relationships are family type.",
+    "collection": "politikere",
+    "complexity": 4,
+    "pipeline": [
+      {
+        "$lookup": {
+          "from": "relasjoner",
+          "localField": "uuid",
+          "foreignField": "personA_uuid",
+          "as": "relasjoner"
+        }
+      },
+      {
+        "$match": {
+          "$expr": {
+            "$setEquals": [
+              { "$map": { "input": "$relasjoner", "as": "r", "in": "$$r.type" } },
+              ["familie"]
+            ]
+          }
+        }
+      }
+    ]
+  },
+  {
+    "name": "quantifier_forall_same_party_connections",
+    "category": "quantifier_forall",
+    "description": "Find politicians whose all connections belong to the same party.",
+    "collection": "politikere",
+    "complexity": 5,
+    "pipeline": [
+      {
+        "$lookup": {
+          "from": "relasjoner",
+          "localField": "uuid",
+          "foreignField": "personA_uuid",
+          "as": "relasjoner"
+        }
+      },
+      {
+        "$lookup": {
+          "from": "politikere",
+          "localField": "relasjoner.personB_uuid",
+          "foreignField": "uuid",
+          "as": "connected_politicians"
+        }
+      },
+      {
+        "$match": {
+          "$expr": {
+            "$setEquals": [
+              { "$map": { "input": "$connected_politicians", "as": "cp", "in": "$$cp.parti" } },
+              ["$parti"]
+            ]
+          }
+        }
+      }
+    ]
+  },
+  {
+    "name": "transitive_connections_politikere",
+    "category": "transitive_closure",
+    "description": "Find indirect connections between politicians through friends/family.",
+    "collection": "relasjoner",
+    "complexity": 5,
+    "pipeline": [
+      {
+        "$graphLookup": {
+          "from": "relasjoner",
+          "startWith": "$personA_uuid",
+          "connectFromField": "personB_uuid",
+          "connectToField": "personA_uuid",
+          "as": "utvidede_relasjoner",
+          "maxDepth": 3,
+          "depthField": "nivå"
+        }
+      }
+    ]
+  },
+  {
+    "name": "transitive_politikere_to_companies",
+    "category": "transitive_closure",
+    "description": "Find companies indirectly connected to politicians via relations and ownership.",
+    "collection": "relasjoner",
+    "complexity": 5,
+    "pipeline": [
+      {
+        "$graphLookup": {
+          "from": "eierskap",
+          "startWith": "$personB_uuid",
+          "connectFromField": "eier.uuid",
+          "connectToField": "utsteder.uuid",
+          "as": "indirekte_selskaper",
+          "maxDepth": 2
+        }
+      }
+    ]
+  }
+]

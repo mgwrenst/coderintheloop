@@ -1,0 +1,85 @@
+database: groundtruthsmall
+
+csv_base_path: "C:/Users/wren9/Downloads/GT0small/GT0small/files"
+schema_base_path: "postgres/schemas/tables"
+
+tables:
+  - name: aksjeeiebok
+    schema: aksjeeiebok.sql
+    file: aksjeeiebok.csv
+    delimiter: ";"
+
+  - name: politikere
+    schema: politikere.sql
+    file: politikere.csv
+    delimiter: ";"
+    date_style: "SQL, DMY"
+
+  - name: konkurs
+    schema: konkurs.sql
+    file: bankrupt_2020_120925.csv
+    delimiter: ","
+    drop_cols: ["nr"]
+
+  - name: selskap
+    schema: selskap.sql
+    file: companies_active_companies_pop_100925_v3.csv
+    delimiter: ","
+    drop_cols: ["nr"]
+
+  - name: person
+    schema: person.sql
+    file: persons_active_companies_pop_100925_v3_keep.csv
+    delimiter: ","
+    drop_cols:
+      - nr
+      - person_birth_day
+      - person_birth_month
+      - person_surrogate_key
+      - person_surrugate_key
+      - person_data_origin_ids
+      - person_disambiguate_uuid
+      - person_person_location_type_key
+      - person_national_identification_number
+      - person_national_identification_schema
+      - person_company_role_meta_role_elector_id
+      - person_company_role_meta_role_responsibility
+      - person_company_role_meta_role_responsibility_percentage
+      - person_company_role_external_url
+      - person_company_role_resigned_flag
+      - person_company_role_surrogate_key
+      - person_company_role_surrugate_key
+      - person_company_role_data_source_uuid
+      - person_street_name
+      - person_street_letter
+      - person_street_number
+      - person_person_master_uuid
+      - person_composite_business_key
+      - company_org_nr_schema
+      - person_company_role_business_key
+      - personSelskapRollePersonUUID
+      - personSelskapRolleSelskapUUID
+      - personSelskapRolleSelskapRolleUUID
+      - personSelskapRolleRegistrertTid
+      - personSelskapRolleOppdatertTid
+
+  - name: eierskap
+    schema: eierskap.sql
+    file: ownerships_2023_2025.csv
+    delimiter: ","
+    drop_cols:
+      - nr
+      - shareholder_person_birth_month
+      - shareholder_person_birth_day
+      - company_share_ownership_ownership_lower
+      - company_share_ownership_ownership_upper
+      - company_share_ownership_voting_ownership_lower
+      - company_share_ownership_voting_ownership_upper
+      - company_share_ownership_share_issuer_company_uuid
+      - company_share_ownership_shareholder_person_uuid
+      - company_share_ownership_shareholder_company_uuid
+
+post_load_sql:
+  - postgres/schemas/post_load/cleanup.sql
+  - postgres/schemas/post_load/view.sql
+  - postgres/schemas/indexes.sql

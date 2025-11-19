@@ -1,0 +1,48 @@
+database: groundtruth0
+
+csv_base_path:
+schema_base_path: "postgres/schemas/tables"
+
+tables:
+  - name: aksjeeiebok
+    schema: aksjeeiebok.sql
+    file:
+    delimter: ";"
+  
+  - name: politikere
+    schema: politikere.sql
+    file: 
+    delimter: ";"
+    date_style: "SQL, DMY"
+
+  - name: konkurs
+    schema: konkurs.sql
+    file:
+    delimter: ","
+    drop_cols: ["nr"]
+  
+  - name: selskap
+    schema: selskap.sql
+    file: 
+    delimiter: ","
+    drop_cols: ["nr"]
+
+  - name: person
+    schema: person.sql
+    file:
+    delimiter: ","
+    drop_cols: 
+
+  - name: eierskap
+    schema: eierskap.sql
+    file:
+    delimiter: ","
+    drop_cols: 
+
+post_load_sql:
+  - postgres/schemas/post_load/cleanup.sql
+  - postgres/schemas/post_load/view.sql
+  - postgres/schemas/indexes.sql
+
+
+  

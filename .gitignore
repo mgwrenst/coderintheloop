@@ -1,5 +1,3 @@
-data/mongo/
-data/postgres/
 experimental/
 
 # Byte-compiled / optimized / DLL files

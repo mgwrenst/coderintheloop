@@ -1,7 +1,7 @@
 import json
 import re
 from openai import OpenAI
-from config.prompts import BASE_PROMPT
+from prompts import BASE_PROMPT
 
 class QueryGenerator:
     def __init__(self, api_key):

@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="AutoImportSettings">
+    <option name="autoReloadType" value="SELECTIVE" />
+  </component>
+  <component name="ChangeListManager">
+    <list default="true" id="c7de67ca-355e-4a9f-9882-e0eb02527504" name="Changes" comment="">
+      <change beforePath="$PROJECT_DIR$/.idea/dataSources/2421b6fc-04a8-4fde-a8cd-8f982202d534.xml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/dataSources/2421b6fc-04a8-4fde-a8cd-8f982202d534/storage_v2/_src_/database/groundtruthsmall.Q34ZEA.meta" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/dataSources/2421b6fc-04a8-4fde-a8cd-8f982202d534/storage_v2/_src_/database/groundtruthsmall.Q34ZEA/schema/information_schema.FNRwLQ.meta" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/dataSources/2421b6fc-04a8-4fde-a8cd-8f982202d534/storage_v2/_src_/database/groundtruthsmall.Q34ZEA/schema/pg_catalog.0S1ZNQ.meta" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/dataSources/2421b6fc-04a8-4fde-a8cd-8f982202d534/storage_v2/_src_/database/groundtruthsmall.Q34ZEA/schema/public.abK9xQ.meta" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/dataSources/2421b6fc-04a8-4fde-a8cd-8f982202d534/storage_v2/_src_/database/groundtruthsmall.Q34ZEA/schema/public.abK9xQ.zip" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/llm/config/prompts.py" beforeDir="false" afterPath="$PROJECT_DIR$/llm/config/prompts.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/llm/models/query_generator.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/llm/models/validator.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/llm/mongo_executor.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/llm/run_llm.py" beforeDir="false" afterPath="$PROJECT_DIR$/llm/run_llm.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/llm/runners/generate_query.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/llm/runners/run_full_pipeline.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/mongo/builder/structured_builder.py" beforeDir="false" afterPath="$PROJECT_DIR$/mongo/builder/structured_builder.py" afterDir="false" />
+    </list>
+    <option name="SHOW_DIALOG" value="false" />
+    <option name="HIGHLIGHT_CONFLICTS" value="true" />
+    <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
+    <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="Git.Settings">
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+  </component>
+  <component name="ProjectColorInfo">{
+  &quot;associatedIndex&quot;: 4
+}</component>
+  <component name="ProjectId" id="35jpPbqoY8046KCvSyw1PWIneQP" />
+  <component name="ProjectViewState">
+    <option name="hideEmptyMiddlePackages" value="true" />
+    <option name="showLibraryContents" value="true" />
+  </component>
+  <component name="PropertiesComponent">{
+  &quot;keyToString&quot;: {
+    &quot;ModuleVcsDetector.initialDetectionPerformed&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;main&quot;,
+    &quot;ignore.virus.scanning.warn.message&quot;: &quot;true&quot;,
+    &quot;last_opened_file_path&quot;: &quot;C:/Users/wren9&quot;
+  },
+  &quot;keyToStringList&quot;: {
+    &quot;DatabaseDriversLRU&quot;: [
+      &quot;postgresql&quot;
+    ]
+  }
+}</component>
+  <component name="SQLScriptSettings">
+    <option name="matrix">
+      <map>
+        <entry key="POSTGRES.CreateComplete" value="Owner=1" />
+      </map>
+    </option>
+  </component>
+  <component name="TaskManager">
+    <task active="true" id="Default" summary="Default task">
+      <changelist id="c7de67ca-355e-4a9f-9882-e0eb02527504" name="Changes" comment="" />
+      <created>1763633312173</created>
+      <option name="number" value="Default" />
+      <option name="presentableId" value="Default" />
+      <updated>1763633312173</updated>
+    </task>
+    <servers />
+  </component>
+</project>

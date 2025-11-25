@@ -1,48 +1,53 @@
-import json
 import os
 from dotenv import load_dotenv
-from pymongo import MongoClient
-
-from mongo_executor import execute_query
-from models.query_generator import QueryGenerator
-from config.prompts import BASE_PROMPT
-
+from pipeline.query_pipeline import QueryPipeline
 
 def main():
     load_dotenv()
-
     api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        print("ERROR: OPENAI_API_KEY not set.")
+
+    print("Velg modus:")
+    print("1) Kun brukerinput")
+    print("2) Base-prompt + brukerinput")
+    print("3) Base-prompt + skjema (manuelt)")
+    print("4) Base-prompt + automatisk MongoDB-skjema")
+
+    mode = int(input("Valg: "))
+
+    question = input("\nSkriv spørsmålet ditt:\n> ")
+
+    # --- MODE LOGIC ---
+    pipeline = None
+    manual_schema = None
+
+    if mode == 1:
+        pipeline = QueryPipeline(api_key, use_base_prompt=False)
+
+    elif mode == 2:
+        pipeline = QueryPipeline(api_key, use_base_prompt=True)
+
+    elif mode == 3:
+        manual_schema = input("Lim inn databaseskjema:\n> ")
+        pipeline = QueryPipeline(api_key, use_base_prompt=True, include_db_schema=False)
+
+    elif mode == 4:
+        uri = input("MongoDB URI:\n> ")
+        db = input("Database-navn:\n> ")
+        pipeline = QueryPipeline(
+            api_key,
+            use_base_prompt=True,
+            include_db_schema=True,
+            db_uri=uri,
+            db_name=db
+    )
+
+    else:
+        print("\nUgyldig valg. Velg et tall fra 1 til 4.")
         return
 
-    # User describes the database schema
-    user_schema = input("\nBeskriv databasen din (skjema) i naturlig språk:\n> ")
-
-    # User writes a natural language question
-    user_question = input("\nSkriv spørsmålet ditt på norsk:\n> ")
-
-    # Instantiate generator
-    generator = QueryGenerator(api_key=api_key)
-
-    # Generate query using LLM
-    output = generator.generate(user_schema, user_question)
-
-    print("\n=== LLM-GENERERT QUERY ===")
-    print(json.dumps(output, indent=4))
-
-    # Connect to MongoDB
-    client = MongoClient("mongodb://localhost:27017")
-    db = client["groundtruthsmall_copy"]   # <-- change if necessary
-
-    # Execute generated query
-    print("\n=== RESULTAT FRA MONGO ===")
-    try:
-        results = execute_query(db, output)
-        for r in results:
-            print(r)
-    except Exception as e:
-        print(f"\nFEIL VED KJØRING AV MONGO-SPØRRING: {e}")
+    result = pipeline.run(question, manual_schema=manual_schema)
+    print("\n=== LLM OUTPUT ===")
+    print(result)
 
 
 if __name__ == "__main__":

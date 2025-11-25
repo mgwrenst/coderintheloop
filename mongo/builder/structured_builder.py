@@ -1,363 +1,236 @@
-from datetime import datetime, timezone
+from datetime import datetime
 from pymongo import MongoClient, ASCENDING
 
 
-def build_structured(pg_dbname: str, mongo_dbname: str):
+def build_structured(raw_dbname: str, structured_dbname: str):
     """
-    Read from raw MongoDB database <pg_dbname>
-    and build a structured MongoDB database <mongo_dbname>.
+    Build structured MongoDB from raw database using recommended schema:
+      - selskap
+      - person (roles embedded)
+      - eierskap
+      - aksjeeiebok
+      - politikere
     """
 
     client = MongoClient("mongodb://localhost:27017")
-    raw = client[pg_dbname]
-    structured = client[mongo_dbname]
+    raw = client[raw_dbname]
+    structured = client[structured_dbname]
 
-    # Drop structured collections (idempotent)
-    for coll in ["selskap", "eierskap", "aksjeeiebok", "politikere"]:
+    # Drop existing
+    for coll in ["selskap", "person", "eierskap", "aksjeeiebok", "politikere"]:
         structured[coll].drop()
 
-    print(f"⚙️ Building structured Mongo database: {mongo_dbname}")
+    print(f"⚙️ Building structured Mongo database: {structured_dbname}")
 
     _build_selskap(raw, structured)
+    _build_person(raw, structured)
     _build_eierskap(raw, structured)
     _build_aksjeeiebok(raw, structured)
     _build_politikere(raw, structured)
 
-    print(f"✅ Structured Mongo database '{mongo_dbname}' completed.\n")
+    print(f"✅ Structured Mongo database '{structured_dbname}' completed.")
 
 
 # -------------------------------------------------------------
-# 1. Structured selskap (with embedded personer)
+# COMPANIES  (selskap + konkurs)
 # -------------------------------------------------------------
 def _build_selskap(raw, structured):
-    from collections import defaultdict
-    from datetime import datetime, timezone
-    from pymongo import ASCENDING
+    selskap_raw = raw["selskap"]
+    selskap = structured["selskap"]   # <-- THIS LINE WAS MISSING
 
-    print("→ Structuring 'selskap' (UUID-based join)...")
-
-    all_companies = raw["alleselskaper"]  # or raw["selskap"] depending on DB
-    persons_raw = raw["person"]
-    out = structured["selskap"]
-
-    # --- Map persons by selskapUUID ---
-    person_roles_by_uuid = defaultdict(list)
-
-    for p in persons_raw.find({}, {"_id": 0}):
-        for comp in p.get("companies", []):
-            comp_uuid = comp.get("uuid")
-            if not comp_uuid:
-                continue
-
-            person_entry = {
-                "uuid": p.get("uuid"),
-                "name": p.get("name"),
-                "roles": comp.get("roles", [])
-            }
-            person_roles_by_uuid[comp_uuid].append(person_entry)
-
-    buffer = []
-    batch_size = 2000
-
-    # --- Process companies ---
-    for s in all_companies.find({}, {"_id": 0}):
-
-        company_uuid = s.get("UUID")  # critical field name
+    bulk = []
+    for s in selskap_raw.find({}):
+        orgnr = s.get("orgnr")
 
         doc = {
-            "company": {
-                "orgnr": s.get("orgNr"),
-                "uuid": company_uuid,
-                "name": s.get("navn"),
-                "type": s.get("organisasjonstype"),
-                "nace": s.get("naceKode")
-            },
-
-            "status": {
-                "bankrupt": bool(s.get("konkursFlagg")),
-                "liquidated": bool(s.get("likvidasjonFlagg")),
-                "dates": {
-                    "founded": s.get("etablertDato"),
-                    "dissolved": s.get("oppløstDato")
-                }
-            },
-
-            "persons": person_roles_by_uuid.get(company_uuid, []),
-
-            "meta": {
-                "nr": s.get("nr"),
-                "imported_at": datetime.now(timezone.utc)
-            }
+            "orgnr": orgnr,
+            "uuid": s.get("uuid"),
+            "navn": s.get("navn"),
+            "organisasjonstype": s.get("organisasjonstype"),
+            "nacekode": s.get("nacekode"),
+            "etablertdato": s.get("etablertdato"),
+            "oppløstdato": s.get("oppløstdato"),
+            "konkursflagg": s.get("konkursflagg"),
+            "likvidasjonflagg": s.get("likvidasjonflagg")
         }
 
-        buffer.append(doc)
+        bulk.append(doc)
+        if len(bulk) >= 1000:
+            selskap.insert_many(bulk)
+            bulk = []
 
-        if len(buffer) >= batch_size:
-            out.insert_many(buffer, ordered=False)
-            buffer.clear()
-
-    if buffer:
-        out.insert_many(buffer, ordered=False)
-
-    out.create_index([("company.orgnr", ASCENDING)])
-    out.create_index([("company.uuid", ASCENDING)], unique=True)
-    out.create_index([("persons.uuid", ASCENDING)])
-
-    print("✓ selskap done.")
-
-
+    if bulk:
+        selskap.insert_many(bulk)
 
 
 # -------------------------------------------------------------
-# 2. Structured eierskap (owner → issuer)
+# PERSONS  (group all rows by person uuid, embed roles)
+# -------------------------------------------------------------
+def _build_person(raw, structured):
+    person_raw = raw["person"]
+    person = structured["person"]
+
+    person.create_index([("uuid", ASCENDING)], unique=True)
+
+    grouped = {}
+
+    for p in person_raw.find({}):
+        uuid = p.get("uuid")
+        if uuid is None:
+            continue
+
+        if uuid not in grouped:
+            grouped[uuid] = {
+                "uuid": uuid,
+                "navn": p.get("navn"),
+                "foedselsdato": p.get("fødselsdato"),
+                "foedselsaar": p.get("fødselsår"),
+                "kjonnuuid": p.get("kjønnuuid"),
+                "adresse": {
+                    "adresse": p.get("adresse"),
+                    "postnummer": p.get("postnummer"),
+                    "poststed": p.get("poststed"),
+                    "land": p.get("land"),
+                    "landkode": p.get("landkode")
+                },
+                "kommune": {
+                    "nr": p.get("kommunenr"),
+                    "navn": p.get("kommunenavn")
+                },
+                "roles": []
+            }
+
+        # Append role
+        grouped[uuid]["roles"].append({
+            "orgnr": p.get("selskaporgnr"),
+            "selskapuuid": p.get("selskapuuid"),
+            "selskapnavn": p.get("selskapnavn"),
+            "rolle": p.get("selskaprolle"),
+            "rolleuuid": p.get("rolleuuid"),
+            "rolleregistrert": p.get("rolleregistrert"),
+            "rolleoppdatert": p.get("rolleoppdatert"),
+            "rollestartdato": p.get("rollestartdato"),
+            "rollesluttdato": p.get("rollesluttdato"),
+            "rollerang": p.get("selskaprollerang")
+        })
+
+    if grouped:
+        person.insert_many(grouped.values())
+
+
+# -------------------------------------------------------------
+# OWNERSHIPS (eierskap)
 # -------------------------------------------------------------
 def _build_eierskap(raw, structured):
-    from datetime import datetime, timezone
-    from pymongo import ASCENDING
+    eierskap_raw = raw["eierskap"]
+    eierskap = structured["eierskap"]
 
-    print("→ Structuring 'eierskap' (full schema, batch mode)...")
+    eierskap.create_index([("company.orgnr", ASCENDING)])
+    eierskap.create_index([("owner.uuid", ASCENDING)])
 
-    src = raw["eierskap"]
-    out = structured["eierskap"]
-
-    buffer = []
-    batch_size = 5000
-
-    for e in src.find({}, {"_id": 0}):
-
-        # Determine owner type
-        owner_type = "person" if e.get("eierpersonuuid") else "company"
-
-        # Calculate percentages
-        share_count = e.get("eierskapantall")
-        share_total = e.get("eierskaptotalantall")
-        percent = None
-        if share_count and share_total and share_total > 0:
-            percent = share_count / share_total
-
-        voting_count = e.get("eierskapstemmeantall")
-        voting_total = e.get("eierskaptotalstemmeantall")
-        voting_percent = None
-        if voting_count and voting_total and voting_total > 0:
-            voting_percent = voting_count / voting_total
-
+    bulk = []
+    for e in eierskap_raw.find({}):
         doc = {
+            "ownership_uuid": e.get("eierskapuuid"),
+            "year": e.get("eierskapår"),
+
             "owner": {
-                "type": owner_type,
-                "person": None,
-                "company": None
+                "uuid": e.get("eierpersonuuid"),
+                "navn": e.get("eierpersonnavn"),
+                "foedselsdato": e.get("eierpersonfødselsdato"),
+                "foedselsaar": e.get("eierpersonfødselsår"),
+                "adresse": e.get("eierpersonadresse"),
+                "postkode": e.get("eierpersonpostkode"),
+                "poststed": e.get("eierpersonpoststed"),
+                "kommunenr": e.get("eierpersonkommunenr"),
+                "kommune": e.get("eierpersonkommune")
             },
 
-            "issuer": {
-                "name": e.get("utstedernavn"),
-                "uuid": e.get("utstederuuid"),
+            "company": {
                 "orgnr": e.get("utstederorgnr"),
-                "company_uuid": e.get("company_share_ownership_share_issuer_company_uuid")
+                "uuid": e.get("utstederuuid"),
+                "navn": e.get("utstedernavn")
             },
 
-            "ownership": {
-                "uuid": e.get("eierskapuuid"),
-                "year": e.get("eierskapår"),
-                "share_count": share_count,
-                "share_total": share_total,
-                "percent": percent,
-                "voting_percent": voting_percent,
-                "voting_total": voting_total,
-                "interval": {
-                    "percent": {
-                        "lower": e.get("company_share_ownership_ownership_lower"),
-                        "upper": e.get("company_share_ownership_ownership_upper"),
-                    },
-                    "voting": {
-                        "lower": e.get("company_share_ownership_voting_ownership_lower"),
-                        "upper": e.get("company_share_ownership_voting_ownership_upper"),
-                    }
-                }
-            },
-
-            "meta": {
-                "source": "eierskap",
-                "imported_at": datetime.now(timezone.utc),
-                "nr": e.get("nr"),
-                "aksjonær_string": e.get("eierskapaksjonær"),
-            }
+            "andel": e.get("eierskapandel"),
+            "antall": e.get("eierskapantall"),
+            "stemmeandel": e.get("eierskapstemmeandel"),
+            "totalantall": e.get("eierskaptotalantall"),
+            "stemmeantall": e.get("eierskapstemmeantall"),
+            "totalsstemmeantall": e.get("eierskaptotalstemmeantall")
         }
 
-        # Owner details
-        if owner_type == "person":
-            doc["owner"]["person"] = {
-                "uuid": e.get("eierpersonuuid"),
-                "name": e.get("eierpersonnavn"),
-                "birth": {
-                    "date": e.get("eierpersonfødselsdato"),
-                    "year": e.get("eierpersonfødselsår"),
-                    "day": e.get("shareholder_person_birth_day"),
-                    "month": e.get("shareholder_person_birth_month"),
-                },
-                "gender_uuid": e.get("eierpersonkjønnuuid"),
-                "address": {
-                    "adresse": e.get("eierpersonadresse"),
-                    "postkode": e.get("eierpersonpostkode"),
-                    "poststed": e.get("eierpersonpoststed"),
-                    "kommune": {
-                        "nr": e.get("eierpersonkommunenr"),
-                        "navn": e.get("eierpersonkommune"),
-                    }
-                }
-            }
-        else:
-            doc["owner"]["company"] = {
-                "name": e.get("eierselskapnavn"),
-                "uuid": e.get("eierselskapuuid"),
-                "orgnr": e.get("eierselskaporgnr")
-            }
+        bulk.append(doc)
+        if len(bulk) >= 2000:
+            eierskap.insert_many(bulk)
+            bulk = []
 
-        buffer.append(doc)
-
-        if len(buffer) >= batch_size:
-            out.insert_many(buffer, ordered=False)
-            buffer.clear()
-
-    if buffer:
-        out.insert_many(buffer, ordered=False)
-
-    # Indexing
-    out.create_index([("owner.person.uuid", ASCENDING)])
-    out.create_index([("owner.company.orgnr", ASCENDING)])
-    out.create_index([("issuer.orgnr", ASCENDING)])
-    out.create_index([("ownership.year", ASCENDING)])
-    out.create_index([("ownership.percent", ASCENDING)])
-
-    print("✓ eierskap done.")
-
+    if bulk:
+        eierskap.insert_many(bulk)
 
 
 # -------------------------------------------------------------
-# 3. Structured aksjeeiebok (shareholder → company)
+# SHAREBOOKS (aksjeeiebok)
 # -------------------------------------------------------------
 def _build_aksjeeiebok(raw, structured):
-    from datetime import datetime, timezone
-    from pymongo import ASCENDING
+    raw_book = raw["aksjeeiebok"]
+    aksjeeiebok = structured["aksjeeiebok"]
 
-    print("→ Structuring 'aksjeeiebok' (full schema, batch mode)...")
+    aksjeeiebok.create_index([("orgnr", ASCENDING)])
+    aksjeeiebok.create_index([("år", ASCENDING)])
 
-    src = raw["aksjeeiebok"]
-    out = structured["aksjeeiebok"]
-
-    buffer = []
-    batch_size = 5000
-
-    for a in src.find({}, {"_id": 0}):
-
-        antall = a.get("antallaksjer")
-        total = a.get("antallaksjerselskap")
-        pct = None
-        if isinstance(antall, (int, float)) and isinstance(total, (int, float)) and total > 0:
-            pct = antall / total
-
+    bulk = []
+    for a in raw_book.find({}):
         doc = {
-            "company": {
-                "orgnr": a.get("orgnr"),
-                "name": a.get("selskap"),
-                "share_class": a.get("aksjeklasse"),
+            "orgnr": a.get("orgnr"),
+            "selskap": a.get("selskap"),
+            "år": a.get("år"),
+            "aksjeklasse": a.get("aksjeklasse"),
+            "aksjonaer": {
+                "navn": a.get("aksjonærnavn"),
+                "nr": a.get("aksjonærnr"),
+                "poststed": a.get("poststed"),
+                "landkode": a.get("landkode")
             },
-            "shareholder": {
-                "name": a.get("aksjonærnavn"),
-                "id_number": a.get("aksjonærnr"),
-                "location": {
-                    "poststed": a.get("poststed"),
-                    "landkode": a.get("landkode"),
-                }
-            },
-            "holdings": {
-                "count": antall,
-                "company_total": total,
-                "ownership_pct": pct,
-            },
-            "year": a.get("år"),
-            "meta": {
-                "source": "aksjeeiebok",
-                "imported_at": datetime.now(timezone.utc),
-            }
+            "antallaksjer": a.get("antallaksjer"),
+            "antallaksjerselskap": a.get("antallaksjerselskap")
         }
 
-        buffer.append(doc)
+        bulk.append(doc)
+        if len(bulk) >= 2000:
+            aksjeeiebok.insert_many(bulk)
+            bulk = []
 
-        if len(buffer) >= batch_size:
-            out.insert_many(buffer, ordered=False)
-            buffer.clear()
-
-    if buffer:
-        out.insert_many(buffer, ordered=False)
-
-    out.create_index([("company.orgnr", ASCENDING)])
-    out.create_index([("shareholder.name", ASCENDING)])
-    out.create_index([("year", ASCENDING)])
-    out.create_index([("holdings.ownership_pct", ASCENDING)])
-
-    print("✓ aksjeeiebok done.")
-
+    if bulk:
+        aksjeeiebok.insert_many(bulk)
 
 
 # -------------------------------------------------------------
-# 4. Structured politikere
+# POLITICIANS
 # -------------------------------------------------------------
 def _build_politikere(raw, structured):
-    from datetime import datetime, timezone
-    from pymongo import ASCENDING
+    raw_pol = raw["politikere"]
+    pol = structured["politikere"]
 
-    print("→ Structuring 'politikere'...")
+    pol.create_index([("navn", ASCENDING)])
+    pol.create_index([("parti", ASCENDING)])
+    pol.create_index([("kommunenr", ASCENDING)])
 
-    src = raw["politikere"]
-    out = structured["politikere"]
+    docs = []
+    for p in raw_pol.find({}):
+        docs.append({
+            "navn": p.get("navn"),
+            "parti": p.get("parti"),
+            "kommunenr": p.get("kommunenr"),
+            "kommune": p.get("kommune"),
+            "foedselsdato": p.get("fødselsdato"),
+            "listeplass": p.get("listeplass"),
+            "stemmetillegg": p.get("stemmetillegg"),
+            "personstemmer": p.get("persontemmer"),
+            "slengere": p.get("slengere"),
+            "endeligrangering": p.get("endeligrangering"),
+            "innvalgt": p.get("innvalgt")
+        })
 
-    buffer = []
-    batch_size = 2000
-
-    for p in src.find({}, {"_id": 0}):
-
-        doc = {
-            "name": p.get("navn"),
-            "birthdate": p.get("fødselsdato"),
-
-            "party": p.get("parti"),
-
-            "municipality": {
-                "nr": p.get("kommunenr"),
-                "name": p.get("kommune")
-            },
-
-            "ballot": {
-                "position": p.get("listeplass"),
-                "final_rank": p.get("endeligrangering"),
-                "vote_bonus": (p.get("stemmetillegg") == "Ja")
-            },
-
-            "votes": {
-                "personal": p.get("personstemmer"),
-                "stray": p.get("slengere")
-            },
-
-            "elected": (p.get("innvalgt") == "Ja"),
-
-            "meta": {
-                "imported_at": datetime.now(timezone.utc)
-            }
-        }
-
-        buffer.append(doc)
-
-        if len(buffer) >= batch_size:
-            out.insert_many(buffer, ordered=False)
-            buffer.clear()
-
-    if buffer:
-        out.insert_many(buffer, ordered=False)
-
-    out.create_index([("name", ASCENDING)])
-    out.create_index([("party", ASCENDING)])
-    out.create_index([("municipality.nr", ASCENDING)])
-    out.create_index([("elected", ASCENDING)])
-
-    print("✓ politikere done.")
-
+    if docs:
+        pol.insert_many(docs)

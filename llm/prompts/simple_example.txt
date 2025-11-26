@@ -1,0 +1,62 @@
+Databasen inneholder informasjon om norske selskaper, personer som jobber eller har jobbet i selskaper, politikere og hvem som eier hva i selskaper. 
+
+Databasen består av fem forskjellige tabeller: 
+
+Den første tabellen heter "selskap" og viser alle selskapene. For hvert selskap ser jeg:
+- orgnr: organisasjonsnummeret til selskapet
+- uuid: en unik ID
+- navn: hva selskapet heter
+- organisasjonstype: hvilken type selskap det er
+- nacekode: en kode som sier hvilken bransje selskapet er i
+- etablertdato: når selskapet ble stiftet
+- oppløstdato: når selskapet ble nedlagt (hvis det er nedlagt)
+- konkursflagg: om selskapet har gått konkurs
+- likvidasjonflagg: om selskapet er under avvikling
+
+Den andre tabellen heter "person" og viser alle personene. For hver person ser jeg:
+- uuid: en unik ID for personen
+- navn: personens navn
+- foedselsdato: når personen er født
+- foedselsaar: fødselsåret
+- kjonnuuid: en ID som angir kjønn
+- adresse: adresseinfo med adresse, postnummer, poststed, land og landkode
+- kommune: kommuneinfo med kommunenummer og kommunenavn
+- roles: en liste over alle roller personen har i forskjellige selskaper, hvor hver rolle viser orgnr til selskapet, selskapets navn, hvilken rolle personen har, når rollen startet og sluttet
+
+Den tredje tabellen heter "eierskap" og viser hvem som eier aksjer i hvilke selskaper. For hvert eierskap ser jeg:
+- ownership_uuid: en unik ID for eierskapet
+- year: hvilket år eierskapet gjelder for
+- owner: informasjon om eieren med uuid, navn, foedselsdato, foedselsaar, adresse, postkode, poststed, kommunenr og kommune
+- company: informasjon om selskapet som eies med orgnr, uuid og navn
+- andel: hvor stor andel av selskapet som eies
+- antall: antall aksjer som eies
+- stemmeandel: hvor stor stemmeandel eieren har
+- totalantall: totalt antall aksjer i selskapet
+- stemmeantall: antall stemmer eieren har
+- totalsstemmeantall: totalt antall stemmer i selskapet
+
+Den fjerde tabellen heter "aksjeeiebok" og er aksjeeiboken til selskaper. For hver oppføring ser jeg:
+- orgnr: organisasjonsnummeret til selskapet
+- selskap: navnet på selskapet
+- år: hvilket år det gjelder
+- aksjeklasse: hvilken type aksje det er
+- aksjonær: informasjon om aksjonæren med navn, nummer, poststed og landkode
+- antallaksjer: hvor mange aksjer aksjonæren har
+- antallaksjerselskap: hvor mange aksjer selskapet totalt har
+
+Den femte tabellen heter "politikere" og viser politikere. For hver politiker ser jeg:
+- navn: politikerens navn
+- parti: hvilket parti de tilhører
+- kommunenr: kommunenummeret
+- kommune: navnet på kommunen
+- foedselsdato: når politikeren er født
+- listeplass: hvilken plass på valglisten
+- stemmetillegg: tilleggsstemmer
+- personstemmer: antall personstemmer
+- slengere: om de er slengere eller ikke
+- endeligrangering: endelig rangering etter valget
+- innvalgt: om de ble valgt inn eller ikke
+
+---
+
+Finn alle politikere fra Oslo. 

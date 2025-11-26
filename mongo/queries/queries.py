@@ -1,5 +1,7 @@
 import os
+import sys
 import json
+from pathlib import Path
 from pymongo import MongoClient
 from pprint import pprint
 
@@ -10,8 +12,19 @@ def main():
     client = MongoClient(MONGO_URI)
     db = client[DB_NAME]
 
+    # --- Select benchmark file (raw vs structured) ---
+    use_structured = ("--structured" in sys.argv) or (os.getenv("BENCHMARK", "").lower() == "structured")
+    benchmarks_dir = Path(__file__).parent.parent / "benchmarks"
+    benchmark_file = benchmarks_dir / ("benchmark_structured.json" if use_structured else "benchmark.json")
+
+    if not benchmark_file.exists():
+        print(f"[ERROR] Benchmark file not found: {benchmark_file}")
+        print("Add it under mongo/benchmarks or remove --structured flag.")
+        sys.exit(1)
+
+    print(f"[INFO] Using benchmark file: {benchmark_file.name}")
     # --- Load queries ---
-    with open("database/mongo/benchmark.json", "r", encoding="utf-8") as f:
+    with open(benchmark_file, "r", encoding="utf-8") as f:
         queries = json.load(f)
 
     # --- Show available queries ---

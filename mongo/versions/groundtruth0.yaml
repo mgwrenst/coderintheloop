@@ -1,0 +1,10 @@
+source_postgres: groundtruth0
+target_mongo_copy: groundtruth0_copy
+target_mongo_structured: groundtruth0_structured
+
+tables:
+- eierskap
+- politikere
+- aksjeeiebok
+- person
+- selskap

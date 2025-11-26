@@ -1,0 +1,12 @@
+Database med informasjon om norske selskaper, personer, politikere og eierskap.
+
+Samlinger (collections):
+- selskap: Bedrifter med felt som navn, orgnr, organisasjonstype, etablertdato, oppløstdato
+- person: Personer med uuid, navn, foedselsdato, foedselsaar, roller i bedrifter
+- eierskap: Eierskapsforhold med eier info, selskap info, år, eierandeler
+- aksjeeiebok: Aksjonærinformasjon med orgnr, aksjonær navn, år, antall aksjer
+- politikere: Politikere med navn, parti, kommune, foedselsdato, innvalgt
+
+---
+
+Finn alle politikere fra Oslo. 

@@ -1,0 +1,5 @@
+# Optional local config for Mongo connection (if not using env)
+# Copy to config.yaml and edit values. Not committed to VCS.
+
+mongo_uri: "mongodb://localhost:27017"
+# default_db: "groundtruthsmall"  # optional, used by queries tool if you prefer

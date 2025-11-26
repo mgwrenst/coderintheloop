@@ -1,0 +1,4 @@
+# Optional local config if not using environment variables
+
+openai_api_key: "sk-..."
+mongo_uri: "mongodb://localhost:27017"

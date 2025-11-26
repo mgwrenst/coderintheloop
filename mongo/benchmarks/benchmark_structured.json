@@ -2,685 +2,115 @@
   {
     "name": "projection_simple",
     "category": "projection",
-    "description": "Return only company name and orgnr",
+    "description": "Return company name and orgnr",
     "collection": "selskap",
     "complexity": 1,
-    "expected_schema": { "navn": "string", "orgnr": "string" },
-    "execution_notes": "Simple projection of two top-level fields.",
     "pipeline": [
       { "$project": { "_id": 0, "navn": 1, "orgnr": 1 } }
-    ]
-  },
-  {
-    "name": "projection_medium",
-    "category": "projection",
-    "description": "Return company name, municipality, and the first associated person's name.",
-    "collection": "selskap",
-    "complexity": 2,
-    "expected_schema": { "navn": "string", "kommunenavn": "string", "første_person": "string" },
-    "execution_notes": "Adds expression field to extract the first person's name.",
-    "pipeline": [
-      {
-        "$project": {
-          "_id": 0,
-          "navn": 1,
-          "kommunenavn": 1,
-          "første_person": { "$arrayElemAt": ["$personer.navn", 0] }
-        }
-      }
-    ]
-  },
-  {
-    "name": "projection_complex",
-    "category": "projection",
-    "description": "Flatten persons and show company name, role, and municipality for each person.",
-    "collection": "selskap",
-    "complexity": 3,
-    "expected_schema": { "selskap": "string", "rolle": "string", "kommunenavn": "string" },
-    "execution_notes": "Uses $unwind and multi-field projection to denormalize persons.",
-    "pipeline": [
-      { "$unwind": "$personer" },
-      {
-        "$project": {
-          "_id": 0,
-          "selskap": "$navn",
-          "rolle": "$personer.rolle",
-          "kommunenavn": 1
-        }
-      }
     ]
   },
   {
     "name": "selection_simple",
     "category": "selection",
-    "description": "Find all politicians from Oslo.",
-    "collection": "politikere",
+    "description": "Companies with a known organization type",
+    "collection": "selskap",
     "complexity": 1,
-    "expected_schema": { "navn": "string", "parti": "string", "kommune": "string" },
-    "execution_notes": "Basic equality match.",
     "pipeline": [
-      { "$match": { "kommune": "Oslo" } }
+      { "$match": { "organisasjonstype": { "$exists": true, "$ne": null } } },
+      { "$project": { "_id": 0, "navn": 1, "organisasjonstype": 1 } }
     ]
   },
   {
-    "name": "selection_medium",
-    "category": "selection",
-    "description": "Find companies updated after 2024-01-01 and located in Bergen.",
-    "collection": "selskap",
-    "complexity": 3,
-    "expected_schema": { "navn": "string", "kommunenavn": "string", "oppdatert_tid": "date" },
-    "execution_notes": "Compound condition with date comparison and location filter.",
-    "pipeline": [
-      {
-        "$match": {
-          "kommunenavn": "Bergen",
-          "oppdatert_tid": { "$gte": { "$date": "2024-01-01T00:00:00Z" } }
-        }
-      }
-    ]
-  },
-  {
-    "name": "selection_complex",
-    "category": "selection",
-    "description": "Find companies that have at least one board member from Oslo or Bergen and more than two persons total.",
-    "collection": "selskap",
-    "complexity": 4,
-    "expected_schema": { "navn": "string", "personer": "array" },
-    "execution_notes": "Combines $expr with $size and nested field condition in arrays.",
-    "pipeline": [
-      {
-        "$match": {
-          "$and": [
-            {
-              "$expr": { "$gt": [ { "$size": "$personer" }, 2 ] }
-            },
-            {
-              "personer": {
-                "$elemMatch": { "kommunenavn": { "$in": ["Oslo", "Bergen"] } }
-              }
-            }
-          ]
-        }
-      }
-    ]
-  },
-  {
-    "name": "join_simple",
+    "name": "join_owners_by_company",
     "category": "join",
-    "description": "Join selskap with eierskap to list ownerships per company.",
+    "description": "Join selskap with eierskap on company orgnr",
     "collection": "selskap",
     "complexity": 3,
-    "expected_schema": { "navn": "string", "eierskap_info": "array" },
-    "execution_notes": "Basic $lookup on orgnr.",
     "pipeline": [
       {
         "$lookup": {
           "from": "eierskap",
           "localField": "orgnr",
-          "foreignField": "utsteder.orgnr",
+          "foreignField": "company.orgnr",
           "as": "eierskap_info"
         }
-      }
+      },
+      { "$project": { "_id": 0, "navn": 1, "orgnr": 1, "eierskap_info": 1 } }
     ]
   },
   {
-    "name": "join_medium",
+    "name": "join_owner_names",
     "category": "join",
-    "description": "Join selskap with eierskap and project only owners’ names and ownership year.",
+    "description": "List owner names and year per company",
     "collection": "selskap",
     "complexity": 4,
-    "expected_schema": { "selskap": "string", "eiernavn": "string", "år": "number" },
-    "execution_notes": "Join followed by $unwind and $project for specific fields.",
     "pipeline": [
       {
         "$lookup": {
           "from": "eierskap",
           "localField": "orgnr",
-          "foreignField": "utsteder.orgnr",
-          "as": "eierskap_info"
+          "foreignField": "company.orgnr",
+          "as": "e"
         }
       },
-      { "$unwind": "$eierskap_info" },
-      {
-        "$project": {
-          "_id": 0,
-          "selskap": "$navn",
-          "eiernavn": "$eierskap_info.eier.navn",
-          "år": "$eierskap_info.år"
-        }
-      }
+      { "$unwind": "$e" },
+      { "$project": { "_id": 0, "selskap": "$navn", "eiernavn": "$e.owner.navn", "år": "$e.year" } }
     ]
   },
   {
-    "name": "join_complex",
-    "category": "join",
-    "description": "Join eierskap and selskap to include owner’s municipality using reverse join.",
+    "name": "union_owners_and_shareholders",
+    "category": "union",
+    "description": "Union of owners (eierskap) and shareholders (aksjeeiebok)",
     "collection": "eierskap",
-    "complexity": 5,
-    "expected_schema": { "eier": "object", "utsteder": "object", "eier_kommune": "string" },
-    "execution_notes": "Performs join in reverse direction using nested $lookup.",
-    "pipeline": [
-      {
-        "$lookup": {
-          "from": "selskap",
-          "localField": "eier.uuid",
-          "foreignField": "orgnr",
-          "as": "eier_selskap"
-        }
-      },
-      {
-        "$addFields": {
-          "eier_kommune": { "$arrayElemAt": ["$eier_selskap.kommunenavn", 0] }
-        }
-      }
-    ]
-  },
-  {
-    "name": "union_simple",
-    "category": "union",
-    "description": "Union of politicians and company persons with only names.",
-    "collection": "politikere",
-    "complexity": 3,
-    "expected_schema": { "navn": "string" },
-    "execution_notes": "Uses $unionWith to merge names from two collections.",
-    "pipeline": [
-      { "$project": { "_id": 0, "navn": 1 } },
-      {
-        "$unionWith": {
-          "coll": "selskap",
-          "pipeline": [
-            { "$unwind": "$personer" },
-            { "$project": { "_id": 0, "navn": "$personer.navn" } }
-          ]
-        }
-      }
-    ]
-  },
-  {
-    "name": "union_medium",
-    "category": "union",
-    "description": "Combine politicians and company persons tagging type and kommune/kommunenavn.",
-    "collection": "politikere",
     "complexity": 4,
-    "expected_schema": { "navn": "string", "type": "string", "kommune": "string" },
-    "execution_notes": "Adds literal field to tag each source in union result.",
     "pipeline": [
-      {
-        "$project": { "_id": 0, "navn": 1, "kommune": 1, "type": { "$literal": "politiker" } }
-      },
-      {
-        "$unionWith": {
-          "coll": "selskap",
-          "pipeline": [
-            { "$unwind": "$personer" },
-            {
-              "$project": {
-                "_id": 0,
-                "navn": "$personer.navn",
-                "kommune": "$kommunenavn",
-                "type": { "$literal": "selskapsperson" }
-              }
-            }
-          ]
-        }
-      }
-    ]
-  },
-  {
-    "name": "union_complex",
-    "category": "union",
-    "description": "Union of company owners and shareholders across eierskap and aksjeeiebok.",
-    "collection": "eierskap",
-    "complexity": 5,
-    "expected_schema": { "navn": "string", "kilde": "string" },
-    "execution_notes": "Combines two ownership sources via $unionWith and adds source label.",
-    "pipeline": [
-      {
-        "$project": {
-          "_id": 0,
-          "navn": "$eier.navn",
-          "kilde": { "$literal": "eierskap" }
-        }
-      },
+      { "$project": { "_id": 0, "navn": "$owner.navn", "kilde": { "$literal": "eierskap" } } },
       {
         "$unionWith": {
           "coll": "aksjeeiebok",
-          "pipeline": [
-            {
-              "$project": {
-                "_id": 0,
-                "navn": "$aksjonær.navn",
-                "kilde": { "$literal": "aksjeeiebok" }
-              }
-            }
-          ]
+          "pipeline": [ { "$project": { "_id": 0, "navn": "$aksjonær.navn", "kilde": { "$literal": "aksjeeiebok" } } } ]
         }
       }
     ]
   },
   {
-    "name": "intersection_simple",
+    "name": "intersection_politicians_owners",
     "category": "intersection",
-    "description": "Find names that are both politicians and company persons.",
+    "description": "Politician names that also appear as owners",
     "collection": "politikere",
     "complexity": 4,
-    "expected_schema": { "navn": "string" },
-    "execution_notes": "Lookup selskap persons and match names using $expr + $in.",
-    "pipeline": [
-      {
-        "$lookup": {
-          "from": "selskap",
-          "pipeline": [
-            { "$unwind": "$personer" },
-            { "$project": { "_id": 0, "navn": "$personer.navn" } }
-          ],
-          "as": "selskap_personer"
-        }
-      },
-      { "$match": { "$expr": { "$in": ["$navn", "$selskap_personer.navn"] } } }
-    ]
-  },
-  {
-    "name": "intersection_medium",
-    "category": "intersection",
-    "description": "Find companies whose name also appears as an owner in eierskap.",
-    "collection": "selskap",
-    "complexity": 4,
-    "expected_schema": { "navn": "string" },
-    "execution_notes": "Cross-checks selskap names against eier.navn using $lookup and $expr.",
     "pipeline": [
       {
         "$lookup": {
           "from": "eierskap",
-          "pipeline": [
-            { "$project": { "_id": 0, "eiernavn": "$eier.navn" } }
-          ],
-          "as": "eiere"
+          "pipeline": [ { "$project": { "_id": 0, "navn": "$owner.navn" } } ],
+          "as": "e"
         }
       },
-      { "$match": { "$expr": { "$in": ["$navn", "$eiere.eiernavn"] } } }
+      { "$match": { "$expr": { "$in": ["$navn", "$e.navn"] } } },
+      { "$project": { "_id": 0, "navn": 1, "parti": 1 } }
     ]
   },
   {
-    "name": "intersection_complex",
-    "category": "intersection",
-    "description": "Find persons that appear as both shareholders and company employees.",
-    "collection": "aksjeeiebok",
-    "complexity": 5,
-    "expected_schema": { "navn": "string" },
-    "execution_notes": "Joins aksjeeiebok with selskap.personer and filters intersecting names.",
-    "pipeline": [
-      {
-        "$lookup": {
-          "from": "selskap",
-          "pipeline": [
-            { "$unwind": "$personer" },
-            { "$project": { "_id": 0, "pnavn": "$personer.navn" } }
-          ],
-          "as": "selskapspersoner"
-        }
-      },
-      {
-        "$match": { "$expr": { "$in": ["$aksjonær.navn", "$selskapspersoner.pnavn"] } }
-      },
-      { "$project": { "_id": 0, "navn": "$aksjonær.navn" } }
-    ]
-  },
-  {
-    "name": "difference_simple",
-    "category": "difference",
-    "description": "Find politicians not listed as company persons.",
-    "collection": "politikere",
-    "complexity": 4,
-    "expected_schema": { "navn": "string" },
-    "execution_notes": "Uses $lookup and $not+$in for difference semantics.",
-    "pipeline": [
-      {
-        "$lookup": {
-          "from": "selskap",
-          "pipeline": [
-            { "$unwind": "$personer" },
-            { "$project": { "_id": 0, "pnavn": "$personer.navn" } }
-          ],
-          "as": "selskap_personer"
-        }
-      },
-      {
-        "$match": { "$expr": { "$not": { "$in": ["$navn", "$selskap_personer.pnavn"] } } }
-      }
-    ]
-  },
-  {
-    "name": "difference_medium",
-    "category": "difference",
-    "description": "Find companies whose orgnr is not referenced in eierskap.",
-    "collection": "selskap",
-    "complexity": 4,
-    "expected_schema": { "navn": "string", "orgnr": "string" },
-    "execution_notes": "Detects companies lacking ownership records via $lookup and $not+$in.",
-    "pipeline": [
-      {
-        "$lookup": {
-          "from": "eierskap",
-          "pipeline": [ { "$project": { "_id": 0, "utstederorgnr": "$utsteder.orgnr" } } ],
-          "as": "utstedere"
-        }
-      },
-      { "$match": { "$expr": { "$not": { "$in": ["$orgnr", "$utstedere.utstederorgnr"] } } } },
-      { "$project": { "_id": 0, "navn": 1, "orgnr": 1 } }
-    ]
-  },
-  {
-    "name": "difference_complex",
-    "category": "difference",
-    "description": "Find shareholders not present as owners in eierskap.",
-    "collection": "aksjeeiebok",
-    "complexity": 5,
-    "expected_schema": { "navn": "string" },
-    "execution_notes": "Compares aksjeeiebok.aksjonær.navn with eierskap.eier.navn to find missing.",
-    "pipeline": [
-      {
-        "$lookup": {
-          "from": "eierskap",
-          "pipeline": [ { "$project": { "_id": 0, "eiernavn": "$eier.navn" } } ],
-          "as": "eiere"
-        }
-      },
-      {
-        "$match": { "$expr": { "$not": { "$in": ["$aksjonær.navn", "$eiere.eiernavn"] } } }
-      },
-      { "$project": { "_id": 0, "navn": "$aksjonær.navn" } }
-    ]
-  },
-  {
-    "name": "alias_simple",
-    "category": "alias",
-    "description": "Rename company name to company_name.",
-    "collection": "selskap",
-    "complexity": 1,
-    "expected_schema": { "company_name": "string" },
-    "execution_notes": "Basic renaming projection.",
-    "pipeline": [
-      { "$project": { "_id": 0, "company_name": "$navn" } }
-    ]
-  },
-  {
-    "name": "alias_medium",
-    "category": "alias",
-    "description": "Rename multiple fields and calculate a derived display_name field.",
-    "collection": "selskap",
-    "complexity": 2,
-    "expected_schema": { "display_name": "string", "municipality": "string" },
-    "execution_notes": "Uses $concat to derive a composed alias field.",
-    "pipeline": [
-      {
-        "$project": {
-          "_id": 0,
-          "display_name": { "$concat": ["$navn", " (", "$orgnr", ")"] },
-          "municipality": "$kommunenavn"
-        }
-      }
-    ]
-  },
-  {
-    "name": "alias_complex",
-    "category": "alias",
-    "description": "Rename nested fields inside persons and flatten structure.",
-    "collection": "selskap",
-    "complexity": 3,
-    "expected_schema": { "selskap": "string", "person": "string", "role": "string" },
-    "execution_notes": "Unwinds and renames nested array fields for readability.",
-    "pipeline": [
-      { "$unwind": "$personer" },
-      {
-        "$project": {
-          "_id": 0,
-          "selskap": "$navn",
-          "person": "$personer.navn",
-          "role": "$personer.rolle"
-        }
-      }
-    ]
-  },
-  {
-    "name": "aggregation_simple",
+    "name": "aggregation_companies_by_type",
     "category": "aggregation",
-    "description": "Count number of companies per municipality.",
+    "description": "Count companies per organization type",
     "collection": "selskap",
     "complexity": 2,
-    "expected_schema": { "_id": "string", "antall": "number" },
-    "execution_notes": "Simple group and count by kommune.",
     "pipeline": [
-      { "$group": { "_id": "$kommunenavn", "antall": { "$sum": 1 } } },
+      { "$group": { "_id": "$organisasjonstype", "antall": { "$sum": 1 } } },
       { "$sort": { "antall": -1 } }
     ]
   },
   {
-    "name": "aggregation_medium",
+    "name": "avg_ownership_per_year",
     "category": "aggregation",
-    "description": "Average ownership share per year.",
+    "description": "Average ownership share per year",
     "collection": "eierskap",
     "complexity": 3,
-    "expected_schema": { "_id": "number", "avg_andel": "number" },
-    "execution_notes": "Groups by year and averages 'andel'.",
     "pipeline": [
-      { "$group": { "_id": "$år", "avg_andel": { "$avg": "$andel" } } },
+      { "$group": { "_id": "$year", "avg_andel": { "$avg": "$andel" } } },
       { "$sort": { "_id": 1 } }
-    ]
-  },
-  {
-    "name": "aggregation_complex",
-    "category": "aggregation",
-    "description": "Find top 5 municipalities with most companies and include total persons.",
-    "collection": "selskap",
-    "complexity": 5,
-    "expected_schema": { "kommune": "string", "antall_selskaper": "number", "antall_personer": "number" },
-    "execution_notes": "Combines grouping, summing array sizes, and sorting with limit.",
-    "pipeline": [
-      {
-        "$group": {
-          "_id": "$kommunenavn",
-          "antall_selskaper": { "$sum": 1 },
-          "antall_personer": { "$sum": { "$size": "$personer" } }
-        }
-      },
-      { "$sort": { "antall_selskaper": -1 } },
-      { "$limit": 5 },
-      {
-        "$project": {
-          "_id": 0,
-          "kommune": "$_id",
-          "antall_selskaper": 1,
-          "antall_personer": 1
-        }
-      }
-    ]
-  },
-  {
-    "name": "quantifier_exists_simple",
-    "category": "quantifier_exists",
-    "description": "Find companies that have at least one person with role 'Daglig leder'.",
-    "collection": "selskap",
-    "complexity": 2,
-    "expected_schema": { "navn": "string", "personer": "array" },
-    "execution_notes": "Simple existential quantifier using implicit array membership.",
-    "pipeline": [
-      { "$match": { "personer.rolle": "Daglig leder" } },
-      { "$project": { "_id": 0, "navn": 1, "personer": 1 } }
-    ]
-  },
-  {
-    "name": "quantifier_exists_medium",
-    "category": "quantifier_exists",
-    "description": "Find companies that have at least one owner from Norway.",
-    "collection": "eierskap",
-    "complexity": 3,
-    "expected_schema": { "utsteder": "object", "eier": "object" },
-    "execution_notes": "Checks if any owner has landkode 'NO' using $elemMatch.",
-    "pipeline": [
-      {
-        "$match": {
-          "eier.poststed": { "$regex": "Norge|NO", "$options": "i" }
-        }
-      },
-      { "$project": { "_id": 0, "utsteder": 1, "eier": 1 } }
-    ]
-  },
-  {
-    "name": "quantifier_exists_complex",
-    "category": "quantifier_exists",
-    "description": "Find companies that have at least one person whose role contains the word 'styre'.",
-    "collection": "selskap",
-    "complexity": 4,
-    "expected_schema": { "navn": "string", "personer": "array" },
-    "execution_notes": "Uses regex pattern matching inside array elements for existential logic.",
-    "pipeline": [
-      {
-        "$match": {
-          "personer": { "$elemMatch": { "rolle": { "$regex": "styre", "$options": "i" } } }
-        }
-      },
-      { "$project": { "_id": 0, "navn": 1, "personer": 1 } }
-    ]
-  },
-  {
-    "name": "quantifier_forall_simple",
-    "category": "quantifier_forall",
-    "description": "Find companies where all persons are 'Styremedlem'.",
-    "collection": "selskap",
-    "complexity": 3,
-    "expected_schema": { "navn": "string", "personer": "array" },
-    "execution_notes": "Universal quantifier using $setEquals on mapped role list.",
-    "pipeline": [
-      {
-        "$match": {
-          "$expr": {
-            "$setEquals": [
-              { "$map": { "input": "$personer", "as": "p", "in": "$$p.rolle" } },
-              ["Styremedlem"]
-            ]
-          }
-        }
-      },
-      { "$project": { "_id": 0, "navn": 1, "personer": 1 } }
-    ]
-  },
-  {
-    "name": "quantifier_forall_medium",
-    "category": "quantifier_forall",
-    "description": "Find companies where all persons have a defined kommune.",
-    "collection": "selskap",
-    "complexity": 4,
-    "expected_schema": { "navn": "string", "personer": "array" },
-    "execution_notes": "Uses $allElementsTrue to enforce every person's kommune field is non-null.",
-    "pipeline": [
-      {
-        "$match": {
-          "$expr": {
-            "$allElementsTrue": {
-              "$map": {
-                "input": "$personer",
-                "as": "p",
-                "in": { "$gt": [{ "$type": "$$p.kommunenavn" }, "missing"] }
-              }
-            }
-          }
-        }
-      },
-      { "$project": { "_id": 0, "navn": 1, "personer": 1 } }
-    ]
-  },
-  {
-    "name": "quantifier_forall_complex",
-    "category": "quantifier_forall",
-    "description": "Find politicians where all are marked 'innvalgt' = true in a given party.",
-    "collection": "politikere",
-    "complexity": 5,
-    "expected_schema": { "parti": "string", "innvalgt": "boolean" },
-    "execution_notes": "Checks universal truth of condition across filtered documents per party.",
-    "pipeline": [
-      { "$match": { "parti": { "$exists": true } } },
-      {
-        "$group": {
-          "_id": "$parti",
-          "all_innvalgt": { "$min": { "$toInt": "$innvalgt" } },
-          "antall": { "$sum": 1 }
-        }
-      },
-      { "$match": { "all_innvalgt": 1 } },
-      { "$project": { "_id": 0, "parti": "$_id", "antall": 1 } }
-    ]
-  },
-  {
-    "name": "transitive_closure_simple",
-    "category": "transitive_closure",
-    "description": "Find all direct and indirect owners for each company using graph lookup.",
-    "collection": "eierskap",
-    "complexity": 4,
-    "expected_schema": { "utsteder": "object", "indirekte_eiere": "array" },
-    "execution_notes": "Performs recursive ownership traversal on uuid fields.",
-    "pipeline": [
-      {
-        "$graphLookup": {
-          "from": "eierskap",
-          "startWith": "$utsteder.uuid",
-          "connectFromField": "utsteder.uuid",
-          "connectToField": "eier.uuid",
-          "as": "indirekte_eiere"
-        }
-      },
-      { "$project": { "_id": 0, "utsteder": 1, "indirekte_eiere": 1 } }
-    ]
-  },
-  {
-    "name": "transitive_closure_medium",
-    "category": "transitive_closure",
-    "description": "Find companies and their full ownership path up to depth 3.",
-    "collection": "eierskap",
-    "complexity": 5,
-    "expected_schema": { "utsteder": "object", "eiere_hierarki": "array" },
-    "execution_notes": "Uses $graphLookup with maxDepth 3 and depthField tracking levels.",
-    "pipeline": [
-      {
-        "$graphLookup": {
-          "from": "eierskap",
-          "startWith": "$utsteder.uuid",
-          "connectFromField": "utsteder.uuid",
-          "connectToField": "eier.uuid",
-          "as": "eiere_hierarki",
-          "maxDepth": 3,
-          "depthField": "nivå"
-        }
-      },
-      { "$project": { "_id": 0, "utsteder": 1, "eiere_hierarki": 1 } }
-    ]
-  },
-  {
-    "name": "transitive_closure_complex",
-    "category": "transitive_closure",
-    "description": "Compute ownership chains and summarize total number of unique owners.",
-    "collection": "eierskap",
-    "complexity": 5,
-    "expected_schema": { "utsteder": "object", "unikke_eiere": "number" },
-    "execution_notes": "Combines $graphLookup recursion with $addFields and $size of unique IDs.",
-    "pipeline": [
-      {
-        "$graphLookup": {
-          "from": "eierskap",
-          "startWith": "$utsteder.uuid",
-          "connectFromField": "utsteder.uuid",
-          "connectToField": "eier.uuid",
-          "as": "alle_eiere"
-        }
-      },
-      {
-        "$addFields": {
-          "unikke_eiere": {
-            "$size": { "$setUnion": ["$alle_eiere.eier.uuid", []] }
-          }
-        }
-      },
-      { "$project": { "_id": 0, "utsteder": 1, "unikke_eiere": 1 } }
     ]
   }
 ]

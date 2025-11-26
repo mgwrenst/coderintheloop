@@ -1,0 +1,13 @@
+source_postgres: your_postgres_db
+target_mongo_copy: your_mongo_raw
+target_mongo_structured: your_mongo_structured
+
+tables:
+  - eierskap
+  - politikere
+  - aksjeeiebok
+  - person
+  - selskap
+
+## Copy this file to a new name (e.g., groundtruthX.yaml) and
+## adjust values. The tables list should match your Postgres DB.
